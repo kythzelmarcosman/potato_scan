@@ -1,0 +1,38 @@
+{
+  "model_name": "Potato Disease Classifier",
+  "architecture": "DenseNet121",
+  "version": "1.0",
+  "created_at": "2026-01-03T12:30:23.037136",
+  "classes": [
+    "late_blight",
+    "healthy",
+    "bacterial_wilt",
+    "not_potato"
+  ],
+  "num_classes": 4,
+  "input_size": [
+    224,
+    224
+  ],
+  "test_accuracy": 0.9950000047683716,
+  "average_confidence": 0.9840174913406372,
+  "per_class_accuracy": {
+    "late_blight": 1.0,
+    "healthy": 0.98,
+    "bacterial_wilt": 1.0,
+    "not_potato": 1.0
+  },
+  "training_params": {
+    "phase1_epochs": 15,
+    "phase2_epochs": 30,
+    "batch_size": 32,
+    "phase1_lr": 0.001,
+    "phase2_lr": 5e-05
+  },
+  "files": {
+    "keras_model": "best_model.h5",
+    "tflite_standard": "potato_model.tflite",
+    "tflite_quantized": "potato_model_quantized.tflite",
+    "labels": "labels.txt"
+  }
+}

@@ -1,0 +1,4 @@
+late_blight
+healthy
+bacterial_wilt
+not_potato
