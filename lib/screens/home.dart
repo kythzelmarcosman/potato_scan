@@ -9,11 +9,10 @@ import '../data/models/scan_result.dart';
 import '../data/repositories/image_repository.dart';
 import '../data/repositories/scan_result_repository.dart';
 import '../services/disease_detection_service.dart';
+import '../theme/app_colors.dart';
 import 'scan_result_screen.dart';
 import 'history_screen.dart';
-
-const Color bgColor = Color(0xFFF4F6DC);
-const Color primaryGreen = Color(0xFF0B7A07);
+import 'sensor_data_screen.dart';
 
 class Home extends StatefulWidget {
   const Home({super.key});
@@ -32,20 +31,20 @@ class _HomeState extends State<Home> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: bgColor,
+      backgroundColor: AppColors.bgColor,
       appBar: AppBar(
-        backgroundColor: bgColor,
+        backgroundColor: AppColors.bgColor,
         elevation: 0,
         centerTitle: true,
         title: Row(
           mainAxisSize: MainAxisSize.min,
-          children: const [
-            Icon(Icons.eco, color: primaryGreen),
-            SizedBox(width: 8),
-            Text(
+          children: [
+            Image.asset('assets/icon/logo.png', height: 28, width: 28),
+            const SizedBox(width: 8),
+            const Text(
               'Potato Scan',
               style: TextStyle(
-                color: Colors.black,
+                color: AppColors.textDark,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -54,71 +53,80 @@ class _HomeState extends State<Home> {
         actions: const [
           Padding(
             padding: EdgeInsets.only(right: 12),
-            child: Icon(Icons.more_vert, color: Colors.black),
+            child: Icon(Icons.more_vert, color: AppColors.textDark),
           ),
         ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.end,
+        child: Stack(
           children: [
-            /// BIG CAPTURE BUTTON
-            _PrimaryButton(
-              icon: Icons.camera_alt,
-              label: 'Capture Image',
-              height: 90,
-              onTap: _isProcessing
-                  ? null
-                  : () => _showImageSourceDialog(context),
-            ),
-
-            const SizedBox(height: 20),
-
-            /// TWO SMALL BUTTONS
-            Row(
+            Column(
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                Expanded(
-                  child: _SecondaryButton(
-                    icon: Icons.history,
-                    label: 'View History',
-                    onTap: _isProcessing
-                        ? null
-                        : () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const HistoryScreen(),
-                              ),
-                            );
-                          },
-                  ),
+                /// BIG CAPTURE BUTTON
+                _PrimaryButton(
+                  icon: Icons.camera_alt,
+                  label: 'Capture Image',
+                  height: 90,
+                  onTap: _isProcessing
+                      ? null
+                      : () => _showImageSourceDialog(context),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _SecondaryButton(
-                    icon: Icons.sensors,
-                    label: 'Sensor Data',
-                    onTap: _isProcessing
-                        ? null
-                        : () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('IoT sensors coming soon'),
-                              ),
-                            );
-                          },
-                  ),
+
+                const SizedBox(height: 20),
+
+                /// TWO SMALL BUTTONS
+                Row(
+                  children: [
+                    Expanded(
+                      child: _SecondaryButton(
+                        icon: Icons.history,
+                        label: 'View History',
+                        onTap: _isProcessing
+                            ? null
+                            : () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const HistoryScreen(),
+                                  ),
+                                );
+                              },
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _SecondaryButton(
+                        icon: Icons.sensors,
+                        label: 'Sensor Data',
+                        onTap: _isProcessing
+                            ? null
+                            : () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const SensorDataScreen(),
+                                  ),
+                                );
+                              },
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-
-            if (_isProcessing) ...[
-              const SizedBox(height: 24),
-              const CircularProgressIndicator(),
-              const SizedBox(height: 8),
-              const Text('Processing image...'),
-            ],
+            if (_isProcessing)
+              Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('Processing image...'),
+                  ],
+                ),
+              ),
           ],
         ),
       ),
@@ -257,18 +265,18 @@ class _PrimaryButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         child: Ink(
           decoration: BoxDecoration(
-            color: primaryGreen,
+            color: AppColors.primaryGreen,
             borderRadius: BorderRadius.circular(24),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, color: Colors.white, size: 36),
+              Icon(icon, color: AppColors.textWhite, size: 36),
               const SizedBox(height: 8),
               Text(
                 label,
                 style: const TextStyle(
-                  color: Colors.white,
+                  color: AppColors.textWhite,
                   fontSize: 22,
                   fontWeight: FontWeight.w600,
                 ),
@@ -301,19 +309,19 @@ class _SecondaryButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         child: Ink(
           decoration: BoxDecoration(
-            color: primaryGreen,
+            color: AppColors.primaryGreen,
             borderRadius: BorderRadius.circular(20),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, color: Colors.white, size: 30),
+              Icon(icon, color: AppColors.textWhite, size: 30),
               const SizedBox(height: 6),
               Text(
                 label,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  color: Colors.white,
+                  color: AppColors.textWhite,
                   fontSize: 16,
                   fontWeight: FontWeight.w500,
                 ),

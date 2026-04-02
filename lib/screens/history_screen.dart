@@ -4,6 +4,7 @@ import '../data/models/image_entity.dart';
 import '../data/models/scan_result.dart';
 import '../data/repositories/image_repository.dart';
 import '../data/repositories/scan_result_repository.dart';
+import '../theme/app_colors.dart';
 import 'scan_result_screen.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -108,7 +109,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: AppColors.errorRed),
+            ),
           ),
         ],
       ),
@@ -136,14 +140,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Scan History'), centerTitle: true),
+      backgroundColor: AppColors.bgColor,
+      appBar: AppBar(
+        backgroundColor: AppColors.bgColor,
+        elevation: 0,
+        title: const Text('Scan History'),
+        centerTitle: true,
+      ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _images.isEmpty
           ? const Center(
               child: Text(
                 'No scan history yet',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
+                style: TextStyle(fontSize: 16, color: AppColors.textGrey),
               ),
             )
           : RefreshIndicator(
@@ -210,7 +220,6 @@ class _HistoryItem extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 4.0),
                 child: Row(
                   children: [
-                    const SizedBox(width: 4),
                     Text(
                       '${(result!.confidence * 100).toStringAsFixed(1)}% confidence',
                       style: TextStyle(
@@ -225,13 +234,13 @@ class _HistoryItem extends StatelessWidget {
               padding: const EdgeInsets.only(top: 4.0),
               child: Text(
                 _formatDateTime(image.capturedAt),
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                style: const TextStyle(fontSize: 12, color: AppColors.textGrey),
               ),
             ),
           ],
         ),
         trailing: IconButton(
-          icon: const Icon(Icons.delete, color: Colors.red),
+          icon: const Icon(Icons.delete, color: AppColors.errorRed),
           onPressed: onDelete,
         ),
         onTap: onTap,
@@ -240,9 +249,9 @@ class _HistoryItem extends StatelessWidget {
   }
 
   Color _getConfidenceColor(double confidence) {
-    if (confidence >= 0.8) return Colors.green;
-    if (confidence >= 0.6) return Colors.orange;
-    return Colors.red;
+    if (confidence >= 0.8) return AppColors.successGreen;
+    if (confidence >= 0.6) return AppColors.warningOrange;
+    return AppColors.errorRed;
   }
 
   String _formatDateTime(DateTime dateTime) {

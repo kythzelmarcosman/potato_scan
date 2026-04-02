@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../data/models/image_entity.dart';
 import '../data/models/scan_result.dart';
+import '../theme/app_colors.dart';
 
 class ScanResultScreen extends StatelessWidget {
   final ImageEntity image;
@@ -16,7 +17,10 @@ class ScanResultScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.bgColor,
       appBar: AppBar(
+        backgroundColor: AppColors.bgColor,
+        elevation: 0,
         title: const Text('Scan Result'),
         centerTitle: true,
       ),
@@ -48,7 +52,7 @@ class ScanResultScreen extends StatelessWidget {
                       'Detected Disease',
                       style: TextStyle(
                         fontSize: 14,
-                        color: Colors.grey,
+                        color: AppColors.textGrey,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -78,7 +82,7 @@ class ScanResultScreen extends StatelessWidget {
                       'Confidence',
                       style: TextStyle(
                         fontSize: 14,
-                        color: Colors.grey,
+                        color: AppColors.textGrey,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -88,7 +92,7 @@ class ScanResultScreen extends StatelessWidget {
                         Expanded(
                           child: LinearProgressIndicator(
                             value: result.confidence,
-                            backgroundColor: Colors.grey[300],
+                            backgroundColor: AppColors.lightGrey,
                             valueColor: AlwaysStoppedAnimation<Color>(
                               _getConfidenceColor(result.confidence),
                             ),
@@ -117,13 +121,17 @@ class ScanResultScreen extends StatelessWidget {
                 padding: const EdgeInsets.all(16.0),
                 child: Row(
                   children: [
-                    const Icon(Icons.access_time, size: 20, color: Colors.grey),
+                    const Icon(
+                      Icons.access_time,
+                      size: 20,
+                      color: AppColors.textGrey,
+                    ),
                     const SizedBox(width: 8),
                     Text(
                       'Scanned: ${_formatDateTime(result.createdAt)}',
                       style: const TextStyle(
                         fontSize: 14,
-                        color: Colors.grey,
+                        color: AppColors.textGrey,
                       ),
                     ),
                   ],
@@ -137,9 +145,9 @@ class ScanResultScreen extends StatelessWidget {
   }
 
   Color _getConfidenceColor(double confidence) {
-    if (confidence >= 0.8) return Colors.green;
-    if (confidence >= 0.6) return Colors.orange;
-    return Colors.red;
+    if (confidence >= 0.8) return AppColors.successGreen;
+    if (confidence >= 0.6) return AppColors.warningOrange;
+    return AppColors.errorRed;
   }
 
   String _formatDateTime(DateTime dateTime) {
@@ -148,4 +156,3 @@ class ScanResultScreen extends StatelessWidget {
         '${dateTime.minute.toString().padLeft(2, '0')}';
   }
 }
-
