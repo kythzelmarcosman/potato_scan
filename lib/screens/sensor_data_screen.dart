@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
 
 import '../data/models/sensor_snapshot.dart';
+import '../services/ble_connection_service.dart';
 import '../services/sensor_session_service.dart';
 import '../theme/app_colors.dart';
 
@@ -51,6 +52,110 @@ class _SensorDataScreenState extends State<SensorDataScreen> {
   StreamSubscription<BluetoothConnectionState>? _connectionSub;
 
   bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _restorePreviousConnection();
+  }
+
+  /// Attempt to restore a previous BLE connection if one exists.
+  Future<void> _restorePreviousConnection() async {
+    final service = BleConnectionService.instance;
+    if (!service.isConnected) return;
+
+    final device = service.connectedDevice;
+    if (device == null) return;
+
+    try {
+      // Re-establish subscriptions for the restored device
+      await _reestablishSubscriptions(device);
+
+      // Restore iOS remote ID if applicable
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        _lastRemoteId = device.remoteId.str;
+      }
+
+      // Restore connection state display
+      if (!mounted) return;
+      setState(() {
+        _status = 'Receiving data';
+      });
+    } catch (e) {
+      // If restoration fails, clear the connection
+      await service.disconnect();
+      if (mounted) {
+        setState(() {
+          _status = 'Disconnected';
+          _device = null;
+        });
+      }
+    }
+  }
+
+  /// Re-establish subscriptions to a device's characteristic notifications.
+  /// This is used when restoring a connection after navigation.
+  Future<void> _reestablishSubscriptions(BluetoothDevice device) async {
+    try {
+      // Ensure the device is still connected
+      if (!device.isConnected) {
+        throw Exception('Device is not connected');
+      }
+
+      // Get or discover services
+      final services = device.servicesList;
+      if (services.isEmpty) {
+        await device.discoverServices();
+      }
+
+      // Find the target characteristic
+      BluetoothCharacteristic? target;
+      for (final s in device.servicesList) {
+        if (s.uuid != _kServiceGuid) continue;
+        for (final c in s.characteristics) {
+          if (c.uuid == _kCharacteristicGuid) {
+            target = c;
+            break;
+          }
+        }
+        if (target != null) break;
+      }
+
+      if (target == null) {
+        throw Exception('Sensor characteristic not found');
+      }
+
+      // Cancel old subscriptions and establish new ones
+      _valueSub?.cancel();
+      _connectionSub?.cancel();
+
+      _valueSub = target.onValueReceived.listen(_onSensorBytes);
+      device.cancelWhenDisconnected(_valueSub!, next: true);
+
+      // Ensure notifications are enabled
+      try {
+        await target.setNotifyValue(true);
+      } catch (_) {
+        // May already be enabled
+      }
+
+      // Re-establish connection state monitoring
+      _connectionSub = device.connectionState.listen((state) {
+        if (!mounted) return;
+        if (state == BluetoothConnectionState.disconnected) {
+          setState(() {
+            _status = 'Disconnected';
+            _device = null;
+          });
+        }
+      });
+      device.cancelWhenDisconnected(_connectionSub!, next: true);
+
+      _device = device;
+    } catch (e) {
+      throw Exception('Failed to re-establish subscriptions: $e');
+    }
+  }
 
   bool _isOurSensor(ScanResult r) {
     final name = r.device.platformName.isNotEmpty
@@ -126,9 +231,17 @@ class _SensorDataScreenState extends State<SensorDataScreen> {
   void dispose() {
     _wifiPollTimer?.cancel();
     _wifiEndpointController.dispose();
-    _valueSub?.cancel();
-    _connectionSub?.cancel();
-    _device?.disconnect();
+
+    // Don't disconnect the BLE device - preserve it for when the user returns.
+    // Only clear local references and store the device (not subscriptions) in the service.
+    if (_device != null) {
+      BleConnectionService.instance.setDevice(_device!);
+    }
+
+    _valueSub = null;
+    _connectionSub = null;
+    _device = null;
+
     super.dispose();
   }
 
@@ -303,6 +416,9 @@ class _SensorDataScreenState extends State<SensorDataScreen> {
     });
     device.cancelWhenDisconnected(_connectionSub!, next: true);
 
+    // Store connection in the service for restoration across navigation
+    BleConnectionService.instance.setDevice(device);
+
     setState(() {
       _device = device;
       if (defaultTargetPlatform == TargetPlatform.iOS) {
@@ -389,27 +505,14 @@ class _SensorDataScreenState extends State<SensorDataScreen> {
   }
 
   Future<void> _disconnect() async {
+    // Use the service to handle proper disconnection
+    await BleConnectionService.instance.disconnect();
+
     _wifiPollTimer?.cancel();
     _wifiPollTimer = null;
-    _valueSub?.cancel();
     _valueSub = null;
-    _connectionSub?.cancel();
     _connectionSub = null;
-
-    final dev = _device;
     _device = null;
-
-    if (dev != null) {
-      try {
-        await dev.disconnect();
-        await dev.connectionState
-            .where((s) => s == BluetoothConnectionState.disconnected)
-            .first
-            .timeout(const Duration(seconds: 12));
-      } catch (_) {
-        /* stack may already report disconnected */
-      }
-    }
 
     if (defaultTargetPlatform == TargetPlatform.android) {
       await Future<void>.delayed(const Duration(milliseconds: 500));
