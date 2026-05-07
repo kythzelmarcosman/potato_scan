@@ -3,10 +3,17 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>
 #include <DHT.h>
+#include <WiFi.h>
+#include <WebServer.h>
 
 // BLE UUIDs (must match Flutter app)
 #define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
 #define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+
+// WiFi credentials (optional mode)
+// Leave empty to disable station connect.
+const char *WIFI_SSID = "";
+const char *WIFI_PASSWORD = "";
 
 // Sensor pins
 #define DHTPIN 4
@@ -22,7 +29,9 @@ static const unsigned long kNotifyIntervalMs = 2000;
 
 DHT dht(DHTPIN, DHTTYPE);
 BLECharacteristic *pCharacteristic;
+WebServer server(80);
 bool deviceConnected = false;
+bool wifiReady = false;
 
 // Latest readings (updated continuously in loop)
 float gHumidity = NAN;
@@ -88,6 +97,46 @@ static String buildJsonPayload() {
   return json;
 }
 
+static void setupWifiAndServer() {
+  if (strlen(WIFI_SSID) == 0) {
+    // SoftAP fallback for offline WiFi mode.
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP("PotatoScan_ESP32", "potatoscan123");
+    Serial.print("WiFi AP started at ");
+    Serial.println(WiFi.softAPIP());
+    wifiReady = true;
+  } else {
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    Serial.print("Connecting to WiFi");
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 25) {
+      delay(400);
+      Serial.print(".");
+      attempts++;
+    }
+    Serial.println();
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.print("WiFi connected. IP: ");
+      Serial.println(WiFi.localIP());
+      wifiReady = true;
+    } else {
+      Serial.println("WiFi connect failed; BLE mode still active.");
+      wifiReady = false;
+    }
+  }
+
+  if (!wifiReady) return;
+
+  server.on("/sensor", HTTP_GET, []() {
+    server.send(200, "application/json", buildJsonPayload());
+  });
+  server.on("/health", HTTP_GET, []() {
+    server.send(200, "application/json", "{\"ok\":true}");
+  });
+  server.begin();
+}
+
 void setup() {
   Serial.begin(115200);
   dht.begin();
@@ -116,6 +165,7 @@ void setup() {
   pAdvertising->setMinInterval(32);   // 20 ms (units of 0.625 ms)
   pAdvertising->setMaxInterval(160);    // 100 ms
   BLEDevice::startAdvertising();
+  setupWifiAndServer();
 
   Serial.println("BLE advertising as PotatoScan_ESP32 — sensors run continuously.");
 }
@@ -151,6 +201,10 @@ void loop() {
     pCharacteristic->setValue(payload.c_str());
     pCharacteristic->notify();
     Serial.println("Notify: " + payload);
+  }
+
+  if (wifiReady) {
+    server.handleClient();
   }
 
   // Safety: if nothing is connected, periodically ensure we are advertising (recover from rare stack glitches).

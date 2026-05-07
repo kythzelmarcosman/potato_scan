@@ -47,5 +47,12 @@
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Potato Scan uses Bluetooth to read temperature, humidity, and soil data from your ESP32 sensor.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Potato Scan uses local WiFi to read sensor data from ESP32.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 </dict>
 </plist>

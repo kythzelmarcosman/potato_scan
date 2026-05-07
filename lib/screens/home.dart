@@ -9,6 +9,8 @@ import '../data/models/scan_result.dart';
 import '../data/repositories/image_repository.dart';
 import '../data/repositories/scan_result_repository.dart';
 import '../services/disease_detection_service.dart';
+import '../services/sensor_session_service.dart';
+import '../services/sync_service.dart';
 import '../theme/app_colors.dart';
 import 'scan_result_screen.dart';
 import 'history_screen.dart';
@@ -198,10 +200,15 @@ class _HomeState extends State<Home> {
         diseaseLabel: result.diseaseLabel,
         confidence: result.confidence,
         createdAt: result.createdAt,
+        temperature: SensorSessionService.instance.latest?.temperature,
+        humidity: SensorSessionService.instance.latest?.humidity,
+        soilMoisture: SensorSessionService.instance.latest?.soilMoisture,
+        sensorSource: SensorSessionService.instance.latest?.source,
       );
 
       // Save scan result to database
       await _resultRepository.insertResult(scanResult);
+      await SyncService.instance.syncNow();
 
       setState(() => _isProcessing = false);
 

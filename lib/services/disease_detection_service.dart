@@ -6,8 +6,9 @@ import '../data/models/scan_result.dart';
 
 /// Service for disease detection using CNN model
 class DiseaseDetectionService {
-  static final DiseaseDetectionService instance = DiseaseDetectionService._internal();
-  
+  static final DiseaseDetectionService instance =
+      DiseaseDetectionService._internal();
+
   Interpreter? _interpreter;
   List<String> _labels = [];
   bool _isInitialized = false;
@@ -24,7 +25,8 @@ class DiseaseDetectionService {
     try {
       // Load labels
       final labelsData = await rootBundle.loadString(_labelsPath);
-      _labels = labelsData.split('\n')
+      _labels = labelsData
+          .split('\n')
           .where((label) => label.trim().isNotEmpty)
           .map((label) => label.trim())
           .toList();
@@ -38,7 +40,7 @@ class DiseaseDetectionService {
   }
 
   /// Analyze an image for potato diseases
-  /// 
+  ///
   /// [imagePath] - Path to the image file to analyze
   /// Returns a ScanResult with disease label and confidence score
   Future<ScanResult> analyzeImage(String imagePath) async {
@@ -71,7 +73,7 @@ class DiseaseDetectionService {
     // Get prediction results
     // Model already outputs softmax probabilities (activation='softmax' in training)
     final predictions = outputBuffer[0] as List<dynamic>;
-    
+
     // Find the class with highest confidence
     // No need to apply softmax - model already outputs probabilities
     double maxConfidence = 0.0;
@@ -97,7 +99,9 @@ class DiseaseDetectionService {
 
   /// Preprocess image: resize to 224x224 and normalize to [0.0, 1.0]
   /// For non-quantized models, we use normalized float32 values
-  Future<List<List<List<List<double>>>>> _preprocessImage(String imagePath) async {
+  Future<List<List<List<List<double>>>>> _preprocessImage(
+    String imagePath,
+  ) async {
     // Read image file
     final imageBytes = await File(imagePath).readAsBytes();
     final image = img.decodeImage(imageBytes);
@@ -122,18 +126,11 @@ class DiseaseDetectionService {
       1,
       (_) => List.generate(
         _inputSize,
-        (y) => List.generate(
-          _inputSize,
-          (x) {
-            final pixel = resizedImage.getPixel(x, y);
-            // Normalize RGB values to [0.0, 1.0] - matches training rescale=1./255
-            return [
-              pixel.r / 255.0,
-              pixel.g / 255.0,
-              pixel.b / 255.0,
-            ];
-          },
-        ),
+        (y) => List.generate(_inputSize, (x) {
+          final pixel = resizedImage.getPixel(x, y);
+          // Normalize RGB values to [0.0, 1.0] - matches training rescale=1./255
+          return [pixel.r / 255.0, pixel.g / 255.0, pixel.b / 255.0];
+        }),
       ),
     );
 

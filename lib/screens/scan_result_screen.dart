@@ -69,6 +69,43 @@ class ScanResultScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
+            Card(
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Sensor Snapshot',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: AppColors.textGrey,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Source: ${result.sensorSource ?? 'Not connected'}',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                    Text(
+                      'Temperature: ${result.temperature?.toStringAsFixed(1) ?? '—'} °C',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                    Text(
+                      'Humidity: ${result.humidity?.toStringAsFixed(1) ?? '—'} %',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                    Text(
+                      'Soil moisture: ${result.soilMoisture?.toString() ?? '—'} %',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
 
             // Confidence card
             Card(
@@ -132,6 +169,36 @@ class ScanResultScreen extends StatelessWidget {
                       style: const TextStyle(
                         fontSize: 14,
                         color: AppColors.textGrey,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Card(
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  children: [
+                    Icon(
+                      result.isSynced ? Icons.cloud_done : Icons.cloud_off,
+                      size: 20,
+                      color: result.isSynced
+                          ? AppColors.successGreen
+                          : AppColors.warningOrange,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        result.isSynced
+                            ? 'Synced to cloud'
+                            : 'Stored offline${result.syncError == null ? '' : ': ${result.syncError}'}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textGrey,
+                        ),
                       ),
                     ),
                   ],

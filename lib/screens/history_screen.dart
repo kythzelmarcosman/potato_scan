@@ -227,6 +227,14 @@ class _HistoryItem extends StatelessWidget {
                         color: _getConfidenceColor(result!.confidence),
                       ),
                     ),
+                    const SizedBox(width: 8),
+                    Icon(
+                      result!.isSynced ? Icons.cloud_done : Icons.cloud_off,
+                      size: 14,
+                      color: result!.isSynced
+                          ? AppColors.successGreen
+                          : AppColors.warningOrange,
+                    ),
                   ],
                 ),
               ),

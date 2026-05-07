@@ -4,8 +4,11 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
 
+import '../data/models/sensor_snapshot.dart';
+import '../services/sensor_session_service.dart';
 import '../theme/app_colors.dart';
 
 /// Must match [esp32_ble_sensors.ino] BLE UUIDs and advertised name.
@@ -34,8 +37,14 @@ class _SensorDataScreenState extends State<SensorDataScreen> {
   double? _humidity;
   int? _soilMoisture;
   DateTime? _lastUpdate;
+  SensorConnectionMode _mode = SensorConnectionMode.bluetooth;
+  final TextEditingController _wifiEndpointController = TextEditingController(
+    text: 'http://192.168.4.1/sensor',
+  );
+  Timer? _wifiPollTimer;
 
   BluetoothDevice? _device;
+
   /// iOS only: last peripheral id for a quick reconnect attempt before scanning.
   String? _lastRemoteId;
   StreamSubscription<List<int>>? _valueSub;
@@ -115,10 +124,19 @@ class _SensorDataScreenState extends State<SensorDataScreen> {
 
   @override
   void dispose() {
+    _wifiPollTimer?.cancel();
+    _wifiEndpointController.dispose();
     _valueSub?.cancel();
     _connectionSub?.cancel();
     _device?.disconnect();
     super.dispose();
+  }
+
+  bool _isConnected() {
+    if (_mode == SensorConnectionMode.wifi) {
+      return _wifiPollTimer?.isActive ?? false;
+    }
+    return _device != null;
   }
 
   Future<bool> _ensureBlePermissions() async {
@@ -166,6 +184,11 @@ class _SensorDataScreenState extends State<SensorDataScreen> {
     });
 
     try {
+      if (_mode == SensorConnectionMode.wifi) {
+        await _connectWifi();
+        return;
+      }
+
       final supported = await FlutterBluePlus.isSupported;
       if (!supported) {
         setState(() {
@@ -188,7 +211,8 @@ class _SensorDataScreenState extends State<SensorDataScreen> {
       // Android: always scan again. Cached [BluetoothDevice.fromId] + system "paired" list
       // entries are often stale; the ESP32 must be found via fresh advertisements.
       // iOS: optional fast reconnect from last id (scan is still the fallback below).
-      if (_lastRemoteId != null && defaultTargetPlatform == TargetPlatform.iOS) {
+      if (_lastRemoteId != null &&
+          defaultTargetPlatform == TargetPlatform.iOS) {
         try {
           setState(() => _status = 'Reconnecting…');
           final cached = BluetoothDevice.fromId(_lastRemoteId!);
@@ -220,6 +244,16 @@ class _SensorDataScreenState extends State<SensorDataScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _connectWifi() async {
+    setState(() => _status = 'Connecting via WiFi…');
+    await _fetchWifiSensorData();
+    _wifiPollTimer?.cancel();
+    _wifiPollTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      _fetchWifiSensorData();
+    });
+    setState(() => _status = 'Receiving data (WiFi)');
   }
 
   Future<void> _attachToDevice(BluetoothDevice device) async {
@@ -286,19 +320,77 @@ class _SensorDataScreenState extends State<SensorDataScreen> {
       final t = map['temperature'];
       final h = map['humidity'];
       final s = map['soilMoisture'];
-      setState(() {
-        _temperature = t == null ? null : (t as num).toDouble();
-        _humidity = h == null ? null : (h as num).toDouble();
-        _soilMoisture = s == null ? null : (s as num).round();
-        _lastUpdate = DateTime.now();
-        _error = null;
-      });
+      _applySensorData(
+        temperature: t == null ? null : (t as num).toDouble(),
+        humidity: h == null ? null : (h as num).toDouble(),
+        soilMoisture: s == null ? null : (s as num).round(),
+        source: 'bluetooth',
+      );
     } catch (_) {
       /* ignore malformed payloads */
     }
   }
 
+  Future<void> _fetchWifiSensorData() async {
+    try {
+      final response = await http
+          .get(Uri.parse(_wifiEndpointController.text.trim()))
+          .timeout(const Duration(seconds: 4));
+      if (response.statusCode != 200) {
+        throw Exception('HTTP ${response.statusCode}');
+      }
+      final map = jsonDecode(response.body) as Map<String, dynamic>;
+      _applySensorData(
+        temperature: map['temperature'] == null
+            ? null
+            : (map['temperature'] as num).toDouble(),
+        humidity: map['humidity'] == null
+            ? null
+            : (map['humidity'] as num).toDouble(),
+        soilMoisture: map['soilMoisture'] == null
+            ? null
+            : (map['soilMoisture'] as num).round(),
+        source: 'wifi',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _status = 'WiFi error';
+        _error = e.toString();
+      });
+    }
+  }
+
+  void _applySensorData({
+    required double? temperature,
+    required double? humidity,
+    required int? soilMoisture,
+    required String source,
+  }) {
+    final now = DateTime.now();
+    SensorSessionService.instance.update(
+      SensorSnapshot(
+        temperature: temperature,
+        humidity: humidity,
+        soilMoisture: soilMoisture,
+        source: source,
+        capturedAt: now,
+      ),
+    );
+    if (!mounted) return;
+    setState(() {
+      _temperature = temperature;
+      _humidity = humidity;
+      _soilMoisture = soilMoisture;
+      _lastUpdate = now;
+      _error = null;
+      _status = source == 'wifi' ? 'Receiving data (WiFi)' : 'Receiving data';
+    });
+  }
+
   Future<void> _disconnect() async {
+    _wifiPollTimer?.cancel();
+    _wifiPollTimer = null;
     _valueSub?.cancel();
     _valueSub = null;
     _connectionSub?.cancel();
@@ -384,11 +476,46 @@ class _SensorDataScreenState extends State<SensorDataScreen> {
               ),
             ],
             const SizedBox(height: 20),
+            SegmentedButton<SensorConnectionMode>(
+              segments: const [
+                ButtonSegment(
+                  value: SensorConnectionMode.bluetooth,
+                  label: Text('Bluetooth'),
+                  icon: Icon(Icons.bluetooth),
+                ),
+                ButtonSegment(
+                  value: SensorConnectionMode.wifi,
+                  label: Text('WiFi'),
+                  icon: Icon(Icons.wifi),
+                ),
+              ],
+              selected: {_mode},
+              onSelectionChanged: _busy
+                  ? null
+                  : (selection) {
+                      setState(() {
+                        _mode = selection.first;
+                        _error = null;
+                        _status = 'Disconnected';
+                      });
+                    },
+            ),
+            const SizedBox(height: 12),
+            if (_mode == SensorConnectionMode.wifi)
+              TextField(
+                controller: _wifiEndpointController,
+                decoration: const InputDecoration(
+                  labelText: 'ESP32 endpoint',
+                  hintText: 'http://192.168.4.1/sensor',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            const SizedBox(height: 20),
             Row(
               children: [
                 Expanded(
                   child: FilledButton(
-                    onPressed: _busy || _device != null ? null : _connect,
+                    onPressed: _busy || _isConnected() ? null : _connect,
                     style: FilledButton.styleFrom(
                       backgroundColor: AppColors.primaryGreen,
                       foregroundColor: AppColors.textWhite,
@@ -399,7 +526,7 @@ class _SensorDataScreenState extends State<SensorDataScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: _device == null ? null : _disconnect,
+                    onPressed: !_isConnected() ? null : _disconnect,
                     child: const Text('Disconnect'),
                   ),
                 ),
@@ -482,3 +609,5 @@ class _SensorDataScreenState extends State<SensorDataScreen> {
     );
   }
 }
+
+enum SensorConnectionMode { bluetooth, wifi }

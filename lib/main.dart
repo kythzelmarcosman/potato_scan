@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'screens/home.dart';
+import 'services/sync_service.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  SyncService.instance.start();
   runApp(const MyApp());
 }
 
