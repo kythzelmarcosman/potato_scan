@@ -10,6 +10,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../data/models/sensor_snapshot.dart';
 import '../services/ble_connection_service.dart';
 import '../services/sensor_session_service.dart';
+import '../services/wifi_settings_service.dart';
 import '../theme/app_colors.dart';
 
 /// Must match [esp32_ble_sensors.ino] BLE UUIDs and advertised name.
@@ -39,9 +40,9 @@ class _SensorDataScreenState extends State<SensorDataScreen> {
   int? _soilMoisture;
   DateTime? _lastUpdate;
   SensorConnectionMode _mode = SensorConnectionMode.bluetooth;
-  final TextEditingController _wifiEndpointController = TextEditingController(
-    text: 'http://192.168.4.1/sensor',
-  );
+  final TextEditingController _wifiSSIDController = TextEditingController();
+  final TextEditingController _wifiPasswordController = TextEditingController();
+  final TextEditingController _wifiEndpointController = TextEditingController();
   Timer? _wifiPollTimer;
 
   BluetoothDevice? _device;
@@ -56,7 +57,18 @@ class _SensorDataScreenState extends State<SensorDataScreen> {
   @override
   void initState() {
     super.initState();
+    _loadWiFiSettings();
     _restorePreviousConnection();
+  }
+
+  /// Load WiFi settings from storage
+  void _loadWiFiSettings() {
+    final ssid = WiFiSettingsService.instance.getSSID();
+    final password = WiFiSettingsService.instance.getPassword();
+    final endpoint = WiFiSettingsService.instance.getEndpoint();
+    _wifiSSIDController.text = ssid;
+    _wifiPasswordController.text = password;
+    _wifiEndpointController.text = endpoint;
   }
 
   /// Attempt to restore a previous BLE connection if one exists.
@@ -230,6 +242,8 @@ class _SensorDataScreenState extends State<SensorDataScreen> {
   @override
   void dispose() {
     _wifiPollTimer?.cancel();
+    _wifiSSIDController.dispose();
+    _wifiPasswordController.dispose();
     _wifiEndpointController.dispose();
 
     // Don't disconnect the BLE device - preserve it for when the user returns.
@@ -529,6 +543,79 @@ class _SensorDataScreenState extends State<SensorDataScreen> {
     }
   }
 
+  /// Send WiFi credentials to ESP32 via BLE
+  Future<void> _sendWiFiCredentialsToESP32() async {
+    if (_device == null || !_device!.isConnected) {
+      if (mounted) {
+        setState(() {
+          _error = 'ESP32 is not connected. Connect via Bluetooth first.';
+        });
+      }
+      return;
+    }
+
+    final ssid = _wifiSSIDController.text.trim();
+    final password = _wifiPasswordController.text.trim();
+
+    if (ssid.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _error = 'WiFi SSID cannot be empty.';
+        });
+      }
+      return;
+    }
+
+    try {
+      if (mounted) {
+        setState(() {
+          _status = 'Sending WiFi credentials to ESP32...';
+          _error = null;
+        });
+      }
+
+      // Send credentials in "SSID:PASSWORD" format
+      final credentials = '$ssid:$password';
+      final bytes = credentials.codeUnits;
+
+      // Find the config characteristic
+      BluetoothCharacteristic? configChar;
+      for (final service in _device!.servicesList) {
+        if (service.uuid.str128 != _kServiceGuid.str128) continue;
+        for (final characteristic in service.characteristics) {
+          // Config characteristic UUID: beb5483e-36e1-4688-b7f5-ea07361b26a9
+          if (characteristic.uuid.str128.toLowerCase() ==
+              'beb5483e-36e1-4688-b7f5-ea07361b26a9'.toLowerCase()) {
+            configChar = characteristic;
+            break;
+          }
+        }
+        if (configChar != null) break;
+      }
+
+      if (configChar == null) {
+        throw Exception('WiFi configuration characteristic not found on ESP32');
+      }
+
+      await configChar.write(bytes);
+
+      if (mounted) {
+        setState(() {
+          _status = 'Disconnected';
+          _error =
+              '✓ WiFi credentials sent! Restart the ESP32 to connect to: $ssid';
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _status = 'Error';
+          _error = 'Failed to send credentials: $e';
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_bleSupported()) {
@@ -604,78 +691,175 @@ class _SensorDataScreenState extends State<SensorDataScreen> {
                     },
             ),
             const SizedBox(height: 12),
-            if (_mode == SensorConnectionMode.wifi)
-              TextField(
-                controller: _wifiEndpointController,
-                decoration: const InputDecoration(
-                  labelText: 'ESP32 endpoint',
-                  hintText: 'http://192.168.4.1/sensor',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton(
-                    onPressed: _busy || _isConnected() ? null : _connect,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.primaryGreen,
-                      foregroundColor: AppColors.textWhite,
-                    ),
-                    child: Text(_busy ? 'Please wait…' : 'Connect'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: !_isConnected() ? null : _disconnect,
-                    child: const Text('Disconnect'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
             Expanded(
-              child: Card(
-                elevation: 2,
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _metricRow(
-                        Icons.thermostat,
-                        'Temperature',
-                        _temperature == null
-                            ? '—'
-                            : '${_temperature!.toStringAsFixed(1)} °C',
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_mode == SensorConnectionMode.wifi) ...[
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey[300]!),
+                        ),
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'WiFi Network',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textDark,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: _wifiSSIDController,
+                              onChanged: (value) async {
+                                await WiFiSettingsService.instance.setSSID(
+                                  value,
+                                );
+                              },
+                              decoration: InputDecoration(
+                                labelText: 'WiFi SSID',
+                                hintText: 'e.g., MyHomeWiFi',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _wifiPasswordController,
+                              obscureText: true,
+                              onChanged: (value) async {
+                                await WiFiSettingsService.instance.setPassword(
+                                  value,
+                                );
+                              },
+                              decoration: InputDecoration(
+                                labelText: 'WiFi Password',
+                                hintText: 'Your network password',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _wifiEndpointController,
+                              onChanged: (value) async {
+                                await WiFiSettingsService.instance.setEndpoint(
+                                  value,
+                                );
+                              },
+                              decoration: InputDecoration(
+                                labelText: 'Endpoint URL',
+                                hintText: 'http://192.168.1.100/sensor',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            FilledButton.icon(
+                              onPressed:
+                                  _device == null || !_device!.isConnected
+                                  ? null
+                                  : _sendWiFiCredentialsToESP32,
+                              style: FilledButton.styleFrom(
+                                backgroundColor: AppColors.primaryGreen,
+                              ),
+                              icon: const Icon(Icons.send),
+                              label: const Text('Send WiFi Config to ESP32'),
+                            ),
+                          ],
+                        ),
                       ),
-                      const Divider(height: 28),
-                      _metricRow(
-                        Icons.water_drop,
-                        'Humidity',
-                        _humidity == null
-                            ? '—'
-                            : '${_humidity!.toStringAsFixed(1)} %',
-                      ),
-                      const Divider(height: 28),
-                      _metricRow(
-                        Icons.grass,
-                        'Soil moisture',
-                        _soilMoisture == null ? '—' : '$_soilMoisture %',
-                      ),
-                      const Spacer(),
-                      if (_lastUpdate != null)
-                        Text(
-                          'Last update: ${_lastUpdate!.toLocal().toString().split('.').first}',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textGrey,
+                      const SizedBox(height: 20),
+                    ],
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: _busy || _isConnected()
+                                ? null
+                                : _connect,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppColors.primaryGreen,
+                              foregroundColor: AppColors.textWhite,
+                            ),
+                            child: Text(_busy ? 'Please wait…' : 'Connect'),
                           ),
                         ),
-                    ],
-                  ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: !_isConnected() ? null : _disconnect,
+                            child: const Text('Disconnect'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    Card(
+                      elevation: 2,
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _metricRow(
+                              Icons.thermostat,
+                              'Temperature',
+                              _temperature == null
+                                  ? '—'
+                                  : '${_temperature!.toStringAsFixed(1)} °C',
+                            ),
+                            const Divider(height: 28),
+                            _metricRow(
+                              Icons.water_drop,
+                              'Humidity',
+                              _humidity == null
+                                  ? '—'
+                                  : '${_humidity!.toStringAsFixed(1)} %',
+                            ),
+                            const Divider(height: 28),
+                            _metricRow(
+                              Icons.grass,
+                              'Soil moisture',
+                              _soilMoisture == null ? '—' : '$_soilMoisture %',
+                            ),
+                            if (_lastUpdate != null) ...[
+                              const SizedBox(height: 16),
+                              Text(
+                                'Last update: ${_lastUpdate!.toLocal().toString().split('.').first}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textGrey,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),

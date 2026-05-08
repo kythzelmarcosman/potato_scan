@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'screens/home.dart';
 import 'services/sync_service.dart';
+import 'services/wifi_settings_service.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await WiFiSettingsService.instance.initialize();
   SyncService.instance.start();
   runApp(const MyApp());
 }
